@@ -1,8 +1,3 @@
-<div class="workshop-cta">
-        <b>FREE WORKSHOP: Parallel Processing in Java</b>Marko Topolnik is giving a free virtual workshop faster parallel processing in Java.
-        <a href="http://airpa.ir/tutorial-signup-parallel-data-java" class="trackPostCTA">>> Sign up to secure a spot</a>
-</div>
-
 ## 1 Introduction
 
 Lambdas, serious type inference, and the Streams API changed my Java code so deeply that it feels like a new language. I can't remember a single for-loop that I had to write with Java 8 (well, except within a Spliterator &mdash; more on that later). However, the API won't let you forget one thing: its first and foremost concern is parallelization. This entailed some tough, potentially dangerous compromises.
@@ -35,20 +30,17 @@ It sounds obvious that the requirement to have everything in RAM should not exis
 
 Still, the message is clear that the focus of the API is squarely on random-access collections of known size, and the use case of I/O-based streams is described as "a worst-case scenario of a sequentially ordered source of unknown size." I cannot suppress my doubt in the sanity of an implementation which fears such a major use case as its worst nightmare. 
 
-So, are we actually faced with a "pain, with no gain" situation?
+So, are we actually faced with a "just pain, no gain" situation?
 
 Contrary to the bleak statements by the core Java team, I found their implementation to be quite able to support the parallelization of I/O-based sources and have yet to experience any kind of trouble with it. I did need to write some custom code to enforce the appropriate batching policy: ideally this should have been provided by the JDK, and maybe it will be in a future release.
 
 ## 2 Solution: Fixed batch size streams
 
-Our goal is to provide ready-made support to implement an I/O-based stream source, relieving the user from the pitfalls of proper implementation of the batching behavior as needed for efficient parallelization. The user will be required to understand his computation task only as much as needed to supply a single parameter: the batch size. 
-
-This should be such that the single-threaded processing of the batch takes about 1 to 10 millseconds. Since this is obviously specific to each processing task, batch size must be considered separately for each usage. However, the range of acceptable processing times is quite large so often a single value will work for many tasks.
+Our goal is to provide ready-made support to implement an I/O-based stream source, relieving the user from the pitfalls of proper implementation of the batching behavior as needed for efficient parallelization. The user will be required to understand his computation task only as much as needed to supply a single parameter: the batch size. This should be such that the single-threaded processing of the batch takes about 1 to 10 millseconds. Since this is obviously specific to each processing task, batch size must be considered separately for each usage. However, the range of acceptable processing times is quite large so often a single value will work for many tasks.
 
 The cornerstone for integrating custom I/O sources into the Streams API is the `Spliterator` interface. One incredibly helpful thing about spliterators is that they *do not need to be thread-safe*. The framework guarantees that it will use your spliterator a single thread at a time, handing it over to the next thread in a clean, thread-safe manner. This turns the implementation of an I/O-based spliterator from a near impossibility to a simple and straightforward task.
 
 The JDK already provides an abstract spliterator class with exactly the goals described above. Its batching policy is hard-coded, however: the size of the first batch is 1024, and it increases by 1024 for each subsequent batch. In other words, the batch sizes follow an arithmetic progression. The goal was to try to cater to as many use cases as possible with a non-configurable policy, but priority was given to tasks which take a very short time per item (such tasks need a large batch). 
-
 This policy fails badly for tasks where the size of the input is moderate (for example, 10,000 items will be split into just four batches), but each item takes substantial time to process (where "substantial" is anything above 1 millisecond). Again, something which I see as a rather typical case in my field of experience is the worst-case scenario for the JDK design. 
 
 ### 2.1 The Spliterator interface
@@ -150,7 +142,7 @@ Let me now present the abstract class that takes care of the splitting aspect, l
       }
     }
 
-As expected, most of the action goes on inside `trySplit()`, an adaptation of the JDK-provided `AbstractSpliterator#trySplit()`. We use `tryAdvance()` with our own `Consumer` implementation to extract the data from the stream. This way we avoid creating any extra demand on the implementor, who is still required to implement just `tryAdvance()`. 
+As expected, most of the action goes on inside `trySplit()`, an adaptation of the JDK-provided `AbstractSpliterator#trySplit()`. We use `tryAdvance()` with our own `Consumer` implementation to extract the data from the stream. This way we avoid creating any extra demand on the implementor, who is still required to implement just `tryAdvance()`.
 
 A neat thing about this design is that it will incur almost no overhead: the `HoldingConsumer` instance is a perfect target for Escape Analysis, so the `value` field will most likely end up directly on the call stack, as if it was a local variable. Moving on, we store the collected items into an array and create an `ArraySpliterator` by delegatig to the JDK method that does this.
 
@@ -363,7 +355,7 @@ The JDK spliterator initially gives three of my four cores something to do, but 
 
 The fixed-batch spliterator, on the other hand, generates 600 batches of size 10, which are evenly assigned to the cores as they become available.
 
-## 4 Conclusion
+## 4 Closing remarks
 
 I have deployed a CSV spliterator similar to the one presented in this article to a production application. Each line of CSV entails substantial work with a Lucene index, plus further custom processing. It is eating through 100 MB-sized CSVs, burning a four-core CPU at 100% utilization for 45 minutes at a time. 
 
